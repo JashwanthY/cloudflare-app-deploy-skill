@@ -1,0 +1,19 @@
+# Never bake secrets or local state into the image — secrets arrive as env vars at runtime.
+.env
+.env.*
+!.env.example
+.dev.vars
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.git/
+node_modules/
+*.db
+*.db-wal
+*.db-shm
+*.sqlite3
+.localstorage/

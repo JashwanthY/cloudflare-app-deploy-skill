@@ -1,0 +1,62 @@
+{
+  "skill_name": "cloudflare-app-deploy",
+  "evals": [
+    {
+      "id": 1,
+      "name": "notes-app-sqlite-uploads",
+      "prompt": "We just finished our notes app (repo at {REPO}). Get it ready to deploy to Cloudflare \u2014 frontend on notes.acme-test.dev and the API on notes-api.acme-test.dev (the zone is acme-test.dev). Notes live in SQLite and attachments get saved to disk right now; nothing should be lost when the server restarts. There are no Cloudflare credentials on this machine, so take it as far as you can without actually deploying (a dry run is fine) and then tell me exactly what the real deploy will do and what I still need to do.",
+      "expected_output": "Repo prepared: deploy manifest/config targeting the two hostnames; FastAPI CORS driven by the frontend origin (not hard-coded localhost) plus a health route; SQLite persisted to R2 (Litestream) with a single instance; attachments moved off local disk to R2; frontend API URL injected at build time; Dockerfile listens on 0.0.0.0 with exec-form CMD and .env excluded from the image; dry run of backend and frontend succeeds; clear summary of what a real deploy creates and the remaining human steps (login/token, Paid plan, R2 keys).",
+      "files": [
+        "fixtures/notes-app"
+      ],
+      "assertions": [
+        "Backend CORS allows https://notes.acme-test.dev via configuration/env (not only hard-coded localhost)",
+        "Backend exposes a dependency-free GET health endpoint that the deploy config/smoke test uses",
+        "SQLite database lives under a persistent path and is continuously replicated to R2 (e.g. Litestream) with exactly one backend instance",
+        "Attachment uploads are stored in R2/object storage instead of the container's local disk",
+        "Frontend build injects https://notes-api.acme-test.dev into the env var the code actually reads (VITE_API_BASE)",
+        "Dockerfile uses exec-form CMD, binds 0.0.0.0, and .env is excluded from the image (.dockerignore)",
+        "Deploy config attaches notes.acme-test.dev and notes-api.acme-test.dev as custom domains",
+        "A dry run of both backend and frontend deploys was executed and succeeded",
+        "Secret values (OPENAI_API_KEY, NOTES_ADMIN_TOKEN) are not placed in plain-text vars or committed config",
+        "SUMMARY.md lists remaining human steps: Cloudflare auth (login or API token), Workers Paid plan for Containers, and R2 credentials"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "nextjs-dashboard-postgres",
+      "prompt": "can you set up cloudflare deployment for our metrics dashboard repo ({REPO})? the next.js frontend should be on metrics.acme-test.dev and the fastapi api on metrics-api.acme-test.dev. we use our existing postgres (DATABASE_URL), no need for a new db. users need to be able to download the CSV exports later. theres no CF login on this box so prep everything + do a dry run and tell me whats left",
+      "expected_output": "Next.js configured for static export (output: 'export', images unoptimized) with the API URL from NEXT_PUBLIC_METRICS_API baked at build time; backend runs the create_app factory on 0.0.0.0 with a health route matching config; DATABASE_URL and SLACK_WEBHOOK_URL treated as secrets (not plain vars); CSV exports moved from local disk to R2 with download URLs; CORS restricted to the frontend origin instead of '*'; no SQLite/Litestream; dry runs succeed; summary of remaining steps.",
+      "files": [
+        "fixtures/metrics-dashboard"
+      ],
+      "assertions": [
+        "next.config sets output: 'export' and images.unoptimized: true",
+        "Frontend build injects https://metrics-api.acme-test.dev into NEXT_PUBLIC_METRICS_API",
+        "Backend container starts the create_app factory (uvicorn --factory or equivalent) listening on 0.0.0.0",
+        "Health check path configured for deploy matches the backend's /healthz route (or an added /health route)",
+        "DATABASE_URL and SLACK_WEBHOOK_URL are handled as secrets, not plain vars or committed values",
+        "CSV exports are written to R2/object storage with a download URL instead of local disk",
+        "CORS is restricted to the frontend origin instead of '*'",
+        "No SQLite/Litestream persistence is introduced (external Postgres is used)",
+        "A dry run of both backend and frontend deploys was executed and succeeded",
+        "SUMMARY.md lists remaining human steps (auth, Paid plan, R2 credentials, DB reachable from the internet)"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "ops-cors-and-stale-secret",
+      "prompt": "Our FastAPI + React app is already deployed on Cloudflare (backend in a Cloudflare Container behind a Worker on api.ourapp.io, frontend on app.ourapp.io, deployed with the cloudflare-app-deploy setup \u2014 there's a cloudflare.deploy.json in the repo). Two problems: (1) first thing in the morning users get 'No Access-Control-Allow-Origin header' errors for a minute or two, then it works; (2) I rotated OPENAI_API_KEY \u2014 updated backend/.env and ran `npx wrangler secret put OPENAI_API_KEY` \u2014 but the API is still using the old key an hour later. What's going on and exactly what should I run to fix both? Answer in a file, don't deploy anything.",
+      "expected_output": "Explains (1) cold start after sleepAfter: platform error/timeout responses lack CORS headers, so browser reports CORS; fix = keep edge preflight/CORS-on-errors in the Worker, verify FRONTEND_ORIGINS, optionally raise sleepAfter / instance size, check logs; (2) containers read env only at start, `wrangler secret put` doesn't restart a running container; fix = run the backend deploy (new image tag rolls the container) rather than raw wrangler commands; mentions prodManagedSecrets if relevant; no destructive actions.",
+      "files": [],
+      "assertions": [
+        "Identifies the sleeping/cold-starting container as the cause of the morning CORS errors",
+        "Explains that platform error/timeout responses lack CORS headers so the browser reports a CORS error",
+        "Gives a concrete fix for the CORS issue (edge preflight/CORS on errors in the Worker, verify FRONTEND_ORIGINS, and/or raise sleepAfter)",
+        "Explains that containers read env vars/secrets only at start, so `wrangler secret put` does not reach the running container",
+        "Gives an exact command that restarts the container with the new secret (e.g. the backend deploy, which rolls a new image)",
+        "Does not recommend destructive actions (deleting Workers, buckets, or teardown)"
+      ]
+    }
+  ]
+}

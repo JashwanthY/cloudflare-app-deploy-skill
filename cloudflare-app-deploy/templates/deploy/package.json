@@ -1,0 +1,18 @@
+{
+  "name": "__APP__-deploy",
+  "private": true,
+  "type": "module",
+  "description": "Cloudflare deploy toolchain for __APP__ (managed by the cloudflare-app-deploy skill)",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "devDependencies": {
+    "@cloudflare/containers": "^0.3.7",
+    "@cloudflare/workers-types": "^5.20261003.1",
+    "typescript": "^5.9.0",
+    "wrangler": "^4.147.0"
+  }
+}

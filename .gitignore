@@ -1,0 +1,8 @@
+# Local test workspace (eval runs, fixtures, node_modules)
+*-workspace/
+node_modules/
+.generated/
+.wrangler/
+.DS_Store
+.env
+.env.*
