@@ -112,6 +112,17 @@ This writes `cloudflare.deploy.json` (if missing) and creates the files below. I
 
 It also adds the backend env file to `.gitignore`.
 
+**Instance size is picked from the code.** `init` reads the backend's dependencies (`requirements*.txt` / `pyproject.toml`) and the Dockerfile's apt packages, sets `backend.instanceType`, and prints why:
+
+| Detected | Picks |
+|---|---|
+| Plain API (FastAPI, SQLAlchemy, httpx, LLM SDKs calling remote APIs) | `basic` (¼ vCPU, 1 GiB) |
+| SQLite mode, pandas/numpy/scikit-learn, LangChain, Pillow, PDF libs | `standard-1` (½ vCPU, 4 GiB) |
+| Playwright/Selenium, OpenCV, ONNX, spaCy, WeasyPrint, ffmpeg/LibreOffice/Tesseract | `standard-2` (1 vCPU, 6 GiB) |
+| PyTorch, TensorFlow, transformers, Whisper, YOLO | `standard-3` (2 vCPU, 8 GiB) |
+
+Tell the user the chosen size and the reason in one line. A bigger size costs more for every second the container is awake. The heuristic only sees declared dependencies, so raise the size yourself when the code does heavy work it can't see. Examples: models downloaded at startup, large files processed in memory, `uvicorn --workers N`. Preflight warns if someone later sets a size below the recommendation, and `backend` stops before pushing an image that won't fit on the instance's disk.
+
 Then review the manifest; every field is documented in `references/manifest.md`. In particular:
 - `backend.secrets` is pre-filled from the env file's keys. Remove anything that isn't needed at runtime.
 - Non-secret config goes in `backend.vars`.
@@ -186,7 +197,7 @@ Tell the user:
 - what was created: Workers, buckets, domains and the R2 token
 - the code changes you made
 - the day-2 commands below
-- cost: containers bill per 10 ms while awake, so `sleepAfter` (default 30m) and `instanceType` (default `standard-1`) are the main cost knobs
+- cost: containers bill per 10 ms while awake, so `sleepAfter` (default 30m) and `instanceType` (picked from the code at `init`) are the main cost knobs
 
 ## Day-2 operations
 

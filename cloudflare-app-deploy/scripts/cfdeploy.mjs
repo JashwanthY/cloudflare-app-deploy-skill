@@ -10,6 +10,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import * as cf from "./lib/cf.mjs";
 import { MANIFEST_FILE, hostnames, loadContext } from "./lib/manifest.mjs";
+import { TIERS, describeTier, diskBytes, recommendInstanceType } from "./lib/sizing.mjs";
 import {
   DeployError, copyIfMissing, extractJson, fail, fmt, log, parseArgs, parseEnvFile, readJson, run, runLive, sleep, today,
   upsertEnvFile, writeJson,
@@ -139,6 +140,8 @@ function buildManifest(root, det, args) {
     };
   }
   if (det.backend) {
+    const beAbs = path.join(root, det.backend.dir);
+    det.backend.sizing = recommendInstanceType({ backendDir: beAbs, dockerfile: path.join(beAbs, "Dockerfile"), sqlite: !!args.sqlite });
     m.backend = {
       dir: det.backend.dir,
       asgi: det.backend.asgi,
@@ -147,7 +150,7 @@ function buildManifest(root, det, args) {
       hostname: args["backend-host"] || `api.${zone}`,
       port: 8000,
       healthPath: "/health",
-      instanceType: "standard-1",
+      instanceType: det.backend.sizing.tier,
       instances: 1,
       maxInstances: 1,
       sleepAfter: "30m",
@@ -228,6 +231,10 @@ async function cmdInit(args) {
     if (!det.frontend && !det.backend) fail(`Could not find a frontend (package.json) or backend (requirements.txt/pyproject.toml) under ${root}.`);
     writeJson(manifestPath, buildManifest(root, det, args));
     log(fmt.ok(`wrote ${MANIFEST_FILE}`));
+    if (det.backend) {
+      log(fmt.info(`instance type: ${describeTier(det.backend.sizing.tier)} — chosen from the code:`));
+      for (const r of det.backend.sizing.reasons) log(`      ${r}`);
+    }
     if (det.frontend) log(fmt.info(`frontend: ${det.frontend.dir} (${det.frontend.framework}), API URL env var: ${det.frontend.apiUrlVar || "none found — check apiUrlVar"}`));
     if (det.backend) log(fmt.info(`backend: ${det.backend.dir} (${det.backend.deps}), ASGI app: ${det.backend.asgi}${det.backend.asgiFactory ? " (factory)" : ""}${det.backend.pythonPath ? ` (PYTHONPATH ${det.backend.pythonPath})` : ""}, secrets from ${det.backend.envFile}: ${det.backend.secrets.join(", ") || "none"} — remove any the code doesn't read`));
   } else log(fmt.info(`${MANIFEST_FILE} already exists — leaving it untouched`));
@@ -373,6 +380,7 @@ async function preflight(ctx, args, { needDocker = true } = {}) {
       else warn("R2 S3 keys not set yet — `storage` will create them");
     }
     lintDockerfile(ctx, { ok, warn, block });
+    checkSizing(ctx, { ok, warn });
   }
 
   if (ctx.frontend) {
@@ -435,6 +443,15 @@ function lintDockerfile(ctx, { ok, warn, block }) {
   if (!srcMentions(b.dirAbs, `"${b.healthPath}"`) && !srcMentions(b.dirAbs, `'${b.healthPath}'`))
     warn(`No ${b.healthPath} route found in the backend — add one (cloudflare_runtime.install(app) does)`);
   ok(`Dockerfile ${path.relative(ctx.root, b.dockerfileAbs)}`);
+}
+
+function checkSizing(ctx, { ok, warn }) {
+  const b = ctx.backend;
+  const rec = recommendInstanceType({ backendDir: b.dirAbs, dockerfile: b.dockerfileAbs, sqlite: !!ctx.storage.sqlite });
+  if (typeof b.instanceType !== "string") return ok(`Instance type: custom ${JSON.stringify(b.instanceType)} (code suggests ${rec.tier})`);
+  if (TIERS.indexOf(b.instanceType) < TIERS.indexOf(rec.tier))
+    warn(`backend.instanceType "${b.instanceType}" looks too small for this code — recommended ${describeTier(rec.tier)}:\n      ${rec.reasons.join("\n      ")}\n    Too little memory gets the container killed (exit 137). Raise it unless you've measured otherwise.`);
+  else ok(`Instance type ${describeTier(b.instanceType)} fits the code (minimum suggested: ${rec.tier})`);
 }
 
 // ------------------------------------------------------------------ storage
@@ -669,6 +686,17 @@ async function cmdBackend(ctx, args) {
     // failed with IMAGE_REGISTRY_DOESNT_CONTAIN_IMAGE. Unique digests also guarantee the container
     // restarts on every deploy, which is how changed secrets take effect.
     runLive("docker", ["build", "--load", "--platform", "linux/amd64", "--provenance=false", "--label", `cfdeploy.build=${tag}`, "-t", localTag, "-f", b.dockerfileAbs, b.buildContextAbs]);
+    // The image must fit on the instance's disk; catch it here instead of as a failed rollout.
+    const size = Number(run("docker", ["image", "inspect", localTag, "--format", "{{.Size}}"]).stdout.trim());
+    const disk = diskBytes(b.instanceType);
+    if (size && disk) {
+      const gb = (n) => (n / 1e9).toFixed(1);
+      if (size > disk) {
+        run("docker", ["image", "rm", localTag]);
+        fail(`Image is ${gb(size)} GB but ${describeTier(b.instanceType)} has ${gb(disk)} GB disk. Raise backend.instanceType or slim the image (multi-stage build, CPU-only wheels, fewer apt packages).`);
+      }
+      log((size > 0.7 * disk ? fmt.warn : fmt.ok)(`Image ${gb(size)} GB of ${gb(disk)} GB instance disk${size > 0.7 * disk ? " — little room left for runtime files" : ""}`));
+    }
     cf.wrangler(ctx, ["containers", "push", localTag], { live: true });
     run("docker", ["image", "rm", localTag]);
   }

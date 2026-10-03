@@ -75,6 +75,7 @@ my-app/
 
 The skill also handles:
 - ✔️ HTTPS and DNS for your subdomains
+- ✔️ The right server size, chosen by reading your `requirements.txt` / `pyproject.toml`
 - ✔️ CORS that works even while the backend is waking up
 - ✔️ Secrets uploaded encrypted, never baked into the image
 - ✔️ Data that survives restarts
@@ -91,6 +92,7 @@ The skill also handles:
 | Your existing subdomains | Can be overwritten silently | **Checked first**; never taken over without your OK |
 | Changing a secret | `wrangler secret put` doesn't reach the running container | **Every deploy restarts the container** with the new secrets |
 | SQLite / uploads | Lost when the container restarts | **Persisted to R2** automatically |
+| Server size | You guess (and pay for it, or get out-of-memory crashes) | **Picked from your dependencies**: plain API → small and cheap, PyTorch → big, and checked before every deploy |
 | "CORS error" on cold start | Common and confusing | **Handled at the edge** |
 | Proof it worked | "Deployed!" | **Live smoke test**: HTTPS, pages, API health, CORS |
 | Tested | — | **Real deploy, plus an agent benchmark** (see below) |

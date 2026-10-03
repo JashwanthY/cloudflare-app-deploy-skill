@@ -89,7 +89,7 @@ code; you edit it; every command validates it and prints precise errors.
 | `hostname` | — | For example `api.acme.ai`. |
 | `port` | `8000` | The port the server listens on inside the container (on `0.0.0.0`). |
 | `healthPath` | `/health` | Must return 200 without touching the DB or external APIs. |
-| `instanceType` | `standard-1` | Sizes and RAM:<ul><li>`lite`: 256 MiB</li><li>`basic`: 1 GiB</li><li>`standard-1`: ½ vCPU, 4 GiB</li><li>`standard-2`: 1 vCPU, 6 GiB</li><li>`standard-3`: 2 vCPU, 8 GiB</li><li>`standard-4`: 4 vCPU, 12 GiB</li><li>a custom object, `{ "vcpu": 2, "memory_mib": 8192, "disk_mb": 16000 }`</li></ul> |
+| `instanceType` | picked by `init` from the code (`basic` for a plain API) | Chosen from dependencies and Dockerfile apt packages; preflight warns if set below that. Sizes and RAM:<ul><li>`lite`: 256 MiB</li><li>`basic`: 1 GiB</li><li>`standard-1`: ½ vCPU, 4 GiB</li><li>`standard-2`: 1 vCPU, 6 GiB</li><li>`standard-3`: 2 vCPU, 8 GiB</li><li>`standard-4`: 4 vCPU, 12 GiB</li><li>a custom object, `{ "vcpu": 2, "memory_mib": 8192, "disk_mb": 16000 }`</li></ul> |
 | `instances` | `1` | `1` means a single container (a singleton). More than 1 spreads requests at random across N containers, which is only safe for **stateless** apps. |
 | `maxInstances` | `instances` | Must be ≥ `instances`. |
 | `sleepAfter` | `30m` | How long the container stays awake after the last request. Shorter is cheaper but means more cold starts (cold start: seconds, up to about a minute with large images or SQLite restore). |

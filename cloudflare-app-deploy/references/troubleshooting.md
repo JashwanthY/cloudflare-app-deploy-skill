@@ -26,6 +26,8 @@ which incident it prevents.
 | Upload PUT to presigned URL → 403 `SignatureDoesNotMatch` | Browser sent a different `Content-Type` than was signed | Send exactly the signed type. See `storage.md`. |
 | Upload works locally, CORS error in production | Bucket CORS doesn't include the production origin | Re-run `$CFDEPLOY storage`. It rewrites CORS from the manifest. |
 | Request body too large (413) | Worker request limit is 100 MB on Free/Pro zones | Use presigned uploads straight to R2. |
+| Container restarts under load, exit code 137, or "out of memory" in logs | Instance too small: no swap, so out-of-memory kills the container | Raise `backend.instanceType` one tier (preflight shows the code-based minimum), then `$CFDEPLOY backend`. Check `uvicorn --workers` too, since each worker holds its own copy of the app in memory. |
+| `backend` stops with "Image is X GB but … has Y GB disk" | The image must fit on the instance's disk (basic 4 GB, standard-1 8 GB, standard-2 12 GB, …) | Raise `instanceType`, or slim the image: multi-stage build, CPU-only PyTorch wheels (`--index-url https://download.pytorch.org/whl/cpu`), fewer apt packages, no model weights baked in. |
 | Data gone after restart / redeploy | Written to container disk | Move it to `storage.files`, `storage.sqlite` or an external DB. See `storage.md`. |
 | SQLite data from yesterday missing after deploy | Restore failed and the app started empty, or two replicators | The entrypoint refuses to start on a failed restore. Make sure `instances` and `maxInstances` are both 1. Never run the production image locally against the production bucket. |
 | `Wrangler requires at least Node.js v22` | Old Node | `nvm install 22 && nvm use 22`. |
